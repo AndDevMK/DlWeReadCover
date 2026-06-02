@@ -4,9 +4,6 @@ const path = require('path');
 
 /**
  * 下载单张封面
- * @param {string} coverUrl - 原始封面URL
- * @param {string} fileName - 保存文件名（含路径）
- * @returns {Promise<void>}
  */
 async function downloadCover(coverUrl, fileName) {
     if (!coverUrl) {
@@ -26,7 +23,7 @@ async function downloadCover(coverUrl, fileName) {
                 'User-Agent':
                     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
             },
-            timeout: 15000 // 15秒超时
+            timeout: 15000
         });
 
         const writer = fs.createWriteStream(fileName);
@@ -53,56 +50,94 @@ async function downloadCover(coverUrl, fileName) {
 
 /**
  * 主逻辑：搜索并下载阅读人数前三的书籍封面
- * @param {string} keyword - 搜索关键词
+ * @param {string} title - 书名关键词
+ * @param {string} author - 作者关键词（可选，仅用于过滤）
  */
-async function downloadTop3Covers(keyword) {
-    // 确保 cover 文件夹存在
+async function downloadTop3Covers(title, author = '') {
     const coverDir = 'cover';
     if (!fs.existsSync(coverDir)) {
         fs.mkdirSync(coverDir, { recursive: true });
         console.log(`[目录] 已创建文件夹: ${coverDir}`);
     }
 
-    const encodedKeyword = encodeURIComponent(keyword);
-    const searchUrl = `https://weread.qq.com/api/store/search?keyword=${encodedKeyword}`;
+    const encodedTitle = encodeURIComponent(title);
+    const initialSearchUrl = `https://weread.qq.com/api/store/search?keyword=${encodedTitle}`;
 
-    console.log(`[搜索] 正在搜索: "${keyword}"`);
+    console.log(`[搜索] 第一次搜索: "${title}"`);
 
-    let booksData;
+    // 第一步：获取 sid 和 scope
+    let searchResult;
     try {
-        const { data } = await axios.get(searchUrl, {
+        const { data } = await axios.get(initialSearchUrl, {
             headers: {
                 'User-Agent':
                     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
             },
             timeout: 10000
         });
-        booksData = data;
+        searchResult = data;
     } catch (err) {
         console.error(`[错误] 搜索请求失败: ${err.message}`);
         return;
     }
 
-    const books = booksData?.results?.[0]?.books;
-    if (!books || books.length === 0) {
+    const sid = searchResult?.sid;
+    if (!sid) {
+        console.error('[错误] 未从搜索结果中获取到 sid');
+        return;
+    }
+
+    const ebookResult = (searchResult?.results || []).find(item => item.type === 1);
+    if (!ebookResult) {
+        console.error('[错误] 未找到电子书分类的 scope');
+        return;
+    }
+    const scope = ebookResult.scope;
+
+    console.log(`[信息] 获取到 sid: ${sid}, scope: ${scope}`);
+
+    // 第二步：获取书籍列表
+    const bookListUrl = `https://weread.qq.com/api/store/search?keyword=${encodedTitle}&sid=${sid}&scope=${scope}&count=20`;
+    console.log(`[搜索] 第二次搜索，获取书籍列表...`);
+
+    let bookListData;
+    try {
+        const { data } = await axios.get(bookListUrl, {
+            headers: {
+                'User-Agent':
+                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            },
+            timeout: 10000
+        });
+        bookListData = data;
+    } catch (err) {
+        console.error(`[错误] 获取书籍列表失败: ${err.message}`);
+        return;
+    }
+
+    const books = bookListData?.results?.[0]?.books;
+    if (!books || !Array.isArray(books) || books.length === 0) {
         console.log('未找到相关书籍');
         return;
     }
 
-    // 筛选 title 包含关键词的书籍，若没有则使用全部
+    // 过滤：书名包含 title，作者包含 author（若提供了 author）
     let matchedBooks = books.filter((book) => {
-        const title = book?.bookInfo?.title || '';
-        return title.includes(keyword);
+        const bookTitle = book?.bookInfo?.title || '';
+        const bookAuthor = book?.bookInfo?.author || '';
+        const titleMatch = bookTitle.includes(title);
+        const authorMatch = author ? bookAuthor.includes(author) : true;
+        return titleMatch && authorMatch;
     });
 
     if (matchedBooks.length === 0) {
-        console.warn('[提示] 未找到标题完全包含关键词的书籍，将使用搜索结果中的所有书籍');
+        console.warn('[提示] 没有同时满足书名和作者的书籍，将使用全部书籍');
         matchedBooks = books;
     }
 
-    // 按阅读人数降序排序，有效阅读人数处理
+    // 按阅读人数降序排序，取前3
     const sortedBooks = matchedBooks
-        .filter((book) => book?.bookInfo) // 保证 bookInfo 存在
+        .filter((book) => book?.bookInfo)
         .sort((a, b) => (b.readingCount || 0) - (a.readingCount || 0));
 
     const top3 = sortedBooks.slice(0, 3);
@@ -114,24 +149,24 @@ async function downloadTop3Covers(keyword) {
 
     console.log(`[结果] 找到 ${top3.length} 本书，开始下载封面...`);
 
+    const safeTitle = title.replace(/[\\/:*?"<>|]/g, '_');
+
     // 依次下载封面
     for (let i = 0; i < top3.length; i++) {
         const book = top3[i];
         const bookInfo = book.bookInfo;
-        const title = bookInfo?.title || '未知书名';
+        const bookTitle = bookInfo?.title || '未知书名';
         const readingCount = book.readingCount || 0;
         const cover = bookInfo?.cover;
 
-        console.log(`[${i + 1}] 《${title}》 阅读人数: ${readingCount}`);
+        console.log(`[${i + 1}] 《${bookTitle}》 作者: ${bookInfo?.author || '未知'} 阅读人数: ${readingCount}`);
 
         if (!cover) {
-            console.warn(`[警告] 《${title}》没有封面信息，跳过`);
+            console.warn(`[警告] 《${bookTitle}》没有封面信息，跳过`);
             continue;
         }
 
-        const safeKeyword = keyword.replace(/[\\/:*?"<>|]/g, '_'); // 去除文件名非法字符
-        const fileName = path.join(coverDir, `${safeKeyword}_Top${i + 1}.jpg`);
-
+        const fileName = path.join(coverDir, `${safeTitle}_Top${i + 1}.jpg`);
         await downloadCover(cover, fileName);
     }
 
@@ -141,7 +176,9 @@ async function downloadTop3Covers(keyword) {
 // 命令行参数处理
 const args = process.argv.slice(2);
 if (args.length > 0) {
-    downloadTop3Covers(args[0]);
+    const title = args[0];
+    const author = args.length > 1 ? args[1] : '';
+    downloadTop3Covers(title, author);
 } else {
-    console.log('用法: node index.js <书名>');
+    console.log('用法: node index.js <书名> [作者]');
 }
