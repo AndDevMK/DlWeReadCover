@@ -1,6 +1,6 @@
 const tf = require('@tensorflow/tfjs-node');
 const Upscaler = require('upscaler/node');
-const x4 = require('@upscalerjs/esrgan-thick/4x');
+const x4 = require('@upscalerjs/esrgan-slim/4x');
 
 // 常量定义
 const PATCH_SIZE = 64; // 根据内存情况调整，较大值更快但耗内存
@@ -13,7 +13,7 @@ let upscalerInstance = null;
 
 function getUpscaler() {
     if (!upscalerInstance) {
-        console.log('[超分] 正在初始化 UpscalerJS (esrgan-thick 4x)...');
+        console.log('[超分] 正在初始化 UpscalerJS (esrgan-slim 4x)...');
         upscalerInstance = new Upscaler({
             model: x4
         });

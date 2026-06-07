@@ -29,7 +29,7 @@
    使用 axios 以 arraybuffer 模式将高清封面直接下载到内存中，避免中间落盘，为后续处理提供原始数据。
 
 6. **AI 超分 4x 放大**  
-   使用 UpscalerJS 加载 esrgan-thick 4x 模型，对 Buffer 进行 4 倍分辨率放大。该模型基于深度学习，能智能重建细节，使小尺寸封面变为高清大图。输入输出均通过 TensorFlow.js 的 tf.node.decodeImage / encodePng 在内存中完成，不生成临时文件。
+   使用 UpscalerJS 加载 esrgan-slim 4x 模型，对 Buffer 进行 4 倍分辨率放大。该模型基于深度学习，能智能重建细节，使小尺寸封面变为高清大图。输入输出均通过 TensorFlow.js 的 tf.node.decodeImage / encodePng 在内存中完成，不生成临时文件。
 
 7. **智能压缩降体积**  
    超分后的图片为无损 PNG，体积巨大（单张可达 5MB+）。使用 sharp 库将其转为 mozjpeg 编码的高质量 JPEG（quality: 85，启用 progressive 和 chromaSubsampling: 4:2:0）。在肉眼几乎无法察觉质量损失的前提下，体积通常可压缩 90% 以上（例如 5MB → 400KB）。
@@ -86,7 +86,7 @@ node index.js 活着 余华
 [完成] 成功下载 3/3 张图片
 [超分] 开始处理《活着》: 133297 bytes
 [超分] 输入尺寸: 597x428, 开始4x超分...
-[超分] 正在初始化 UpscalerJS (esrgan-thick 4x)...
+[超分] 正在初始化 UpscalerJS (esrgan-slim 4x)...
 [超分] 模型初始化完成
 [超分] 处理进度: 100.00%
 [成功] 超分完成《活着》: 2388x1712 (3067681 bytes)
@@ -144,4 +144,4 @@ node index.js 活着 余华
 
 ## License
 
-本项目采用 MIT License 开源，详情请查看 LICENSE 文件。
+本项目采用 MIT License 开源，请查看 LICENSE 文件。
