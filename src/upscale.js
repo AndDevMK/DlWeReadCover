@@ -1,9 +1,8 @@
 const tf = require('@tensorflow/tfjs-node');
 const Upscaler = require('upscaler/node');
-const x4 = require('@upscalerjs/esrgan-slim/4x');
 
 // 常量定义
-const PATCH_SIZE = 64; // 根据内存情况调整，较大值更快但耗内存
+// const PATCH_SIZE = 64; // 根据内存情况调整，较大值更快但耗内存
 const PADDING = 4;
 
 /**
@@ -13,9 +12,22 @@ let upscalerInstance = null;
 
 function getUpscaler() {
     if (!upscalerInstance) {
-        console.log('[超分] 正在初始化 UpscalerJS (esrgan-slim 4x)...');
+        console.log('[超分] 正在初始化 UpscalerJS (Real-CUGAN 4x)...');
         upscalerInstance = new Upscaler({
-            model: x4
+            model: {
+                scale: 4,                
+                modelType: 'graph', // UpscalerJS 默认按 layers 模型加载，但 web-realesrgan 是 graph 模型，两者 JSON 格式完全不同。需要显式告诉 UpscalerJS 这是 graph 类型。
+                path: tf.io.fileSystem('model/Real-CUGAN/4x/model.json'),   // 模型来自：https://github.com/xororz/web-realesrgan，降噪等级为conservative，也就是保守型：这通常意味着采用一种温和或保守的降噪方式。也就是说，该方式会尽量保留原始图像的细节，避免过度平滑处理。
+                preprocess: (input) => tf.tidy(() => {  // 这是一个在将输入图像输入模型之前对其进行处理的函数。例如，如果你需要对输入图像进行某种处理以使其符合模型要求，就可以使用这个函数。
+                    // 因为输入图片的像素值是 int32 类型（0-255 整数），但模型要求 float32 类型。需要在预处理中显式转换。不然报错：The dtype of dict['input'] provided in model.execute(dict) must be float32, but was int32
+                    // 先转 float32，再归一化到 [0, 1]
+                    return tf.cast(input, 'float32').div(255);
+                }),
+                postprocess: (output) => tf.tidy(() => { // 这是一个在图像经过模型推理处理后对其进行进一步处理的函数。例如，你可能需要将浮点数转换为 0 到 255 之间的整数。
+                    // 输出反归一化到 [0, 255]，并转回 int32
+                    return output.clipByValue(0, 1).mul(255);
+                }),
+            },
         });
         console.log('[超分] 模型初始化完成');
     }
@@ -100,7 +112,8 @@ async function upscaleImage(imageBuffer, bookTitle = '未知书名') {
         const upscaler = getUpscaler();
         outputTensor = await upscaler.upscale(inputTensor, {
             output: 'tensor',  // base64 | tensor ——表示 UpscalerJS 返回的响应类型：要么是图像的 Base64 编码字符串，要么是张量数据。在浏览器中，默认值为 "base64" ；而在 Node.js 环境中，则默认为 "tensor" 。
-            patchSize: PATCH_SIZE,  // 可选：指定要操作的图像块大小。
+            // 模型中已定义了patchSize，那么这里就不需要重复设置了，否则出现警告信息：You have provided a patchSize, but the model definition already includes an input size. Your patchSize will be ignored.
+            // patchSize: PATCH_SIZE,  // 可选：指定要操作的图像块大小。
             padding: PADDING, // 可选地指定填充尺寸。
             progress: (progress) => {  // 如果 execute 被调用时带有 patchSize 参数，那么会返回此进度信息作为回调。
                 printProgress(progress);
