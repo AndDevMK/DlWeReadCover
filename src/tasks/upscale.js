@@ -2,7 +2,6 @@ const tf = require('@tensorflow/tfjs-node');
 const Upscaler = require('upscaler/node');
 
 // 常量定义
-// const PATCH_SIZE = 64; // 根据内存情况调整，较大值更快但耗内存
 const PADDING = 4;
 
 /**
@@ -12,12 +11,11 @@ let upscalerInstance = null;
 
 function getUpscaler() {
     if (!upscalerInstance) {
-        console.log('[超分] 正在初始化 UpscalerJS (Real-CUGAN 4x)...');
         upscalerInstance = new Upscaler({
             model: {
-                scale: 4,                
+                scale: 4,
                 modelType: 'graph', // UpscalerJS 默认按 layers 模型加载，但 web-realesrgan 是 graph 模型，两者 JSON 格式完全不同。需要显式告诉 UpscalerJS 这是 graph 类型。
-                path: tf.io.fileSystem('model/Real-CUGAN/4x/model.json'),   // 模型来自：https://github.com/xororz/web-realesrgan，降噪等级为conservative，也就是保守型：这通常意味着采用一种温和或保守的降噪方式。也就是说，该方式会尽量保留原始图像的细节，避免过度平滑处理。
+                path: tf.io.fileSystem('models/Real-CUGAN/4x/model.json'),   // 模型来自：https://github.com/xororz/web-realesrgan，降噪等级为conservative，也就是保守型：这通常意味着采用一种温和或保守的降噪方式。也就是说，该方式会尽量保留原始图像的细节，避免过度平滑处理。
                 preprocess: (input) => tf.tidy(() => {  // 这是一个在将输入图像输入模型之前对其进行处理的函数。例如，如果你需要对输入图像进行某种处理以使其符合模型要求，就可以使用这个函数。
                     // 因为输入图片的像素值是 int32 类型（0-255 整数），但模型要求 float32 类型。需要在预处理中显式转换。不然报错：The dtype of dict['input'] provided in model.execute(dict) must be float32, but was int32
                     // 先转 float32，再归一化到 [0, 1]
@@ -29,7 +27,6 @@ function getUpscaler() {
                 }),
             },
         });
-        console.log('[超分] 模型初始化完成');
     }
     return upscalerInstance;
 }
@@ -92,12 +89,10 @@ function printProgress(progress) {
  * @param {string} bookTitle - 书名（用于日志）
  * @returns {Promise<<Buffer>} 超分后的图片Buffer
  */
-async function upscaleImage(imageBuffer, bookTitle = '未知书名') {
+async function upscaleImage(imageBuffer, bookTitle = '未知书名', onProgress) {
     if (!Buffer.isBuffer(imageBuffer)) {
         throw new Error(`[超分] 输入不是Buffer: ${bookTitle}`);
     }
-
-    console.log(`[超分] 开始处理《${bookTitle}》: ${imageBuffer.length} bytes`);
 
     let inputTensor = null;
     let outputTensor = null;
@@ -106,7 +101,6 @@ async function upscaleImage(imageBuffer, bookTitle = '未知书名') {
         // 1. Buffer -> Tensor
         inputTensor = bufferToTensor(imageBuffer);
         const shape = inputTensor.shape;
-        console.log(`[超分] 输入尺寸: ${shape[0]}x${shape[1]}, 开始4x超分...`);
 
         // 2. 执行超分
         const upscaler = getUpscaler();
@@ -116,15 +110,13 @@ async function upscaleImage(imageBuffer, bookTitle = '未知书名') {
             // patchSize: PATCH_SIZE,  // 可选：指定要操作的图像块大小。
             padding: PADDING, // 可选地指定填充尺寸。
             progress: (progress) => {  // 如果 execute 被调用时带有 patchSize 参数，那么会返回此进度信息作为回调。
-                printProgress(progress);
+                if (onProgress) onProgress(progress);
             },
         });
 
         // 3. Tensor -> Buffer
         const resultBuffer = await tensorToBuffer(outputTensor);
         const outputShape = outputTensor.shape;
-
-        console.log(`[成功] 超分完成《${bookTitle}》: ${outputShape[0]}x${outputShape[1]} (${resultBuffer.length} bytes)`);
 
         return resultBuffer;
 
@@ -142,16 +134,24 @@ async function upscaleImage(imageBuffer, bookTitle = '未知书名') {
  * @param {Array<{title: string, author: string, readingCount: number, buffer: Buffer}>} images - 图片Buffer数组
  * @returns {Promise<Array<{title: string, author: string, readingCount: number, buffer: Buffer}>>}
  */
-async function upscaleImages(images) {
+async function upscaleImages(images, onStepProgress = null) {
     if (!Array.isArray(images)) {
         throw new Error('images必须是数组');
     }
 
     const results = [];
+    const total = images.length;
 
-    for (const image of images) {
+    for (let i = 0; i < total; i++) {
+        const image = images[i];
         try {
-            const upscaledBuffer = await upscaleImage(image.buffer, image.title);
+            const onSingleProgress = (innerProgress) => {
+                if (onStepProgress) {
+                    const stepOverall = (i + innerProgress) / total;
+                    onStepProgress(stepOverall);
+                }
+            };
+            const upscaledBuffer = await upscaleImage(image.buffer, image.title, onSingleProgress);
             results.push({
                 title: image.title,
                 author: image.author,
@@ -168,7 +168,6 @@ async function upscaleImages(images) {
         throw new Error('所有图片超分均失败');
     }
 
-    console.log(`[完成] 成功超分 ${results.length}/${images.length} 张图片`);
     return results;
 }
 
@@ -181,7 +180,7 @@ function disposeUpscaler() {
         tf.engine().startScope(); // 清理所有未释放的tensor
         tf.engine().endScope();
         upscalerInstance = null;
-        console.log('[超分] 已释放模型资源');
+        //console.log('[超分] 已释放模型资源');
     }
 }
 

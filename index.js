@@ -1,8 +1,9 @@
-const { searchTop3Books } = require('./src/search');
-const { downloadImagesBuffers } = require('./src/download');
-const { upscaleImages, disposeUpscaler } = require('./src/upscale');
-const { compressImages } = require('./src/compress');
-const { saveImages } = require('./src/save');
+const { searchTop3Books } = require('./src/tasks/search');
+const { downloadImagesBuffers } = require('./src/tasks/download');
+const { upscaleImages, disposeUpscaler } = require('./src/tasks/upscale');
+const { compressImages } = require('./src/tasks/compress');
+const { saveImages } = require('./src/tasks/save');
+const { Progress } = require('./src/utils/progress');
 
 /**
  * 主逻辑：搜索 -> 下载 -> 超分 -> 压缩 -> 保存
@@ -12,21 +13,45 @@ const { saveImages } = require('./src/save');
 async function processBookCovers(title, author = '') {
     const startTime = Date.now();
 
+    // 定义各步骤权重（总和为1）
+    const stepWeights = {
+        '搜索Top3书籍': 0.10,
+        '下载封面': 0.10,
+        '4x超分': 0.70,
+        '压缩体积': 0.05,
+        '保存为JPG': 0.05
+    };
+    // 创建进度管理器
+    const progress = new Progress(stepWeights);
+    progress.start();
+
     try {
         // 1. 搜索Top3书籍
-        const books = await searchTop3Books(title, author);
+        const books = await progress.runStep('搜索Top3书籍', async (onProgress) => {
+            return await searchTop3Books(title, author, onProgress);
+        });
 
         // 2. 下载封面为Buffer
-        const downloadedImages = await downloadImagesBuffers(books);
+        const downloaded = await progress.runStep('下载封面', async (onProgress) => {
+            return await downloadImagesBuffers(books, onProgress);
+        });
 
         // 3. 4x超分
-        const upscaledImages = await upscaleImages(downloadedImages);
+        const upscaled = await progress.runStep('4x超分', async (onProgress) => {
+            return await upscaleImages(downloaded, onProgress);
+        });
 
         // 4. 压缩体积（超分后的PNG Buffer → 高质量JPEG Buffer）
-        const compressedImages = await compressImages(upscaledImages);
+        const compressed = await progress.runStep('压缩体积', async (onProgress) => {
+            return await compressImages(upscaled, onProgress);
+        });
 
         // 5. 保存为JPG
-        const savedPaths = await saveImages(compressedImages, title);
+        const savedPaths = await progress.runStep('保存为JPG', async (onProgress) => {
+            return await saveImages(compressed, title, onProgress);
+        });
+
+        progress.stop();
 
         // 统计
         const duration = ((Date.now() - startTime) / 1000).toFixed(2);
@@ -34,6 +59,7 @@ async function processBookCovers(title, author = '') {
         savedPaths.forEach((p, i) => console.log(`  ${i + 1}. ${p}`));
 
     } catch (err) {
+        progress.stop();
         console.error(`[致命错误] 流程中断: ${err.message}`);
         process.exit(1);
     } finally {

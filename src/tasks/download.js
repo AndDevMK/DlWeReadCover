@@ -31,7 +31,6 @@ async function downloadImageBuffer(coverUrl, bookTitle = '未知书名') {
     }
 
     const hdCoverUrl = getHdCoverUrl(coverUrl);
-    console.log(`[下载] 正在下载《${bookTitle}》: ${hdCoverUrl}`);
 
     try {
         const response = await axios({
@@ -51,12 +50,11 @@ async function downloadImageBuffer(coverUrl, bookTitle = '未知书名') {
         }
 
         const buffer = Buffer.from(response.data);
-        
+
         if (buffer.length === 0) {
             throw new Error('下载的图片数据为空');
         }
 
-        console.log(`[成功] 已下载《${bookTitle}》: ${buffer.length} bytes`);
         return buffer;
 
     } catch (err) {
@@ -72,14 +70,16 @@ async function downloadImageBuffer(coverUrl, bookTitle = '未知书名') {
  * @param {Array<{coverUrl: string, title: string}>} books - 书籍信息数组
  * @returns {Promise<Array<{title: string, author: string, readingCount: number, buffer: Buffer}>>}
  */
-async function downloadImagesBuffers(books) {
+async function downloadImagesBuffers(books, onStepProgress = null) {
     if (!Array.isArray(books)) {
         throw new Error('books必须是数组');
     }
 
     const results = [];
-    
-    for (const book of books) {
+    const total = books.length;
+
+    for (let i = 0; i < total; i++) {
+        const book = books[i];
         try {
             const buffer = await downloadImageBuffer(book.coverUrl, book.title);
             results.push({
@@ -88,6 +88,9 @@ async function downloadImagesBuffers(books) {
                 readingCount: book.readingCount,
                 buffer
             });
+            if (onStepProgress) {
+                onStepProgress((i + 1) / total);
+            }
         } catch (err) {
             console.error(`[跳过] ${err.message}`);
             // 继续处理下一本，不中断流程
@@ -98,7 +101,6 @@ async function downloadImagesBuffers(books) {
         throw new Error('所有图片下载均失败');
     }
 
-    console.log(`[完成] 成功下载 ${results.length}/${books.length} 张图片`);
     return results;
 }
 

@@ -22,7 +22,7 @@ async function getSearchMeta(title) {
     try {
         const { data } = await axios.get(url, {
             headers: { 'User-Agent': USER_AGENT },
-            timeout: REQUEST_TIMEOUT
+            timeout: REQUEST_TIMEOUT,
         });
 
         const sid = data?.sid;
@@ -92,7 +92,7 @@ function filterAndSortBooks(books, title, author = '') {
         const bookInfo = book?.bookInfo || {};
         const bookTitle = bookInfo.title || '';
         const bookAuthor = bookInfo.author || '';
-        
+
         const titleMatch = bookTitle.includes(title);
         const authorMatch = author ? bookAuthor.includes(author) : true;
         return titleMatch && authorMatch;
@@ -100,7 +100,6 @@ function filterAndSortBooks(books, title, author = '') {
 
     // 若无匹配，回退到全部书籍（但保留警告）
     if (matchedBooks.length === 0) {
-        console.warn(`[提示] 没有同时满足书名"${title}"和作者"${author}"的书籍，将使用全部书籍`);
         matchedBooks = books;
     }
 
@@ -124,25 +123,22 @@ function filterAndSortBooks(books, title, author = '') {
  * @param {string} author - 作者关键词（可选）
  * @returns {Promise<Array<{title: string, author: string, readingCount: number, coverUrl: string}>>}
  */
-async function searchTop3Books(title, author = '') {
-    console.log(`[搜索] 开始搜索: "${title}" ${author ? `(作者: ${author})` : ''}`);
-    
+async function searchTop3Books(title, author = '', onStepProgress = null) {
     const { sid, scope } = await getSearchMeta(title);
-    console.log(`[信息] 获取到 sid: ${sid}, scope: ${scope}`);
-    
+    if (onStepProgress) {
+        onStepProgress(0.50);
+    }
+
     const books = await getBookList(title, sid, scope);
-    console.log(`[信息] 获取到 ${books.length} 本候选书籍`);
-    
+    if (onStepProgress) {
+        onStepProgress(1.00);
+    }
+
     const top3 = filterAndSortBooks(books, title, author);
     
     if (top3.length === 0) {
         throw new Error('没有可用的书籍信息');
     }
-
-    console.log(`[结果] 筛选出 Top ${top3.length} 本书:`);
-    top3.forEach((book, i) => {
-        console.log(`  [${i + 1}] 《${book.title}》 作者: ${book.author} 阅读人数: ${book.readingCount}`);
-    });
 
     return top3;
 }

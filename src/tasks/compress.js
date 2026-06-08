@@ -15,8 +15,6 @@ async function compressImage(buffer, bookTitle = '未知书名') {
         throw new Error(`[压缩] 输入不是Buffer: ${bookTitle}`);
     }
 
-    console.log(`[压缩] 开始处理《${bookTitle}》: ${buffer.length} bytes`);
-
     try {
         const compressedBuffer = await sharp(buffer)
             .jpeg({
@@ -29,9 +27,6 @@ async function compressImage(buffer, bookTitle = '未知书名') {
             .toBuffer();
 
         const ratio = ((1 - compressedBuffer.length / buffer.length) * 100).toFixed(1);
-        console.log(
-            `[成功] 压缩完成《${bookTitle}》: ${buffer.length} -> ${compressedBuffer.length} bytes (减少 ${ratio}%)`
-        );
 
         return compressedBuffer;
     } catch (err) {
@@ -44,13 +39,16 @@ async function compressImage(buffer, bookTitle = '未知书名') {
  * @param {Array<{title: string, author: string, readingCount: number, buffer: Buffer}>} images
  * @returns {Promise<Array<{title: string, author: string, readingCount: number, buffer: Buffer}>>}
  */
-async function compressImages(images) {
+async function compressImages(images, onStepProgress = null) {
     if (!Array.isArray(images)) {
         throw new Error('images必须是数组');
     }
 
     const results = [];
-    for (const image of images) {
+    const total = images.length;
+
+    for (let i = 0; i < total; i++) {
+        const image = images[i];
         try {
             const compressedBuffer = await compressImage(image.buffer, image.title);
             results.push({
@@ -59,6 +57,9 @@ async function compressImages(images) {
                 readingCount: image.readingCount,
                 buffer: compressedBuffer
             });
+            if (onStepProgress) {
+                onStepProgress((i + 1) / total);
+            }
         } catch (err) {
             console.error(`[跳过] ${err.message}`);
             // 继续处理下一张
@@ -69,7 +70,6 @@ async function compressImages(images) {
         throw new Error('所有图片压缩均失败');
     }
 
-    console.log(`[完成] 成功压缩 ${results.length}/${images.length} 张图片`);
     return results;
 }
 

@@ -143,6 +143,6 @@ vite.config.ts.timestamp-*
 .vite/
 
 # -------
-cover/
+covers/
 .vscode/
 .DS_Store

@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 // 常量定义
-const DEFAULT_OUTPUT_DIR = 'cover';
+const DEFAULT_OUTPUT_DIR = 'covers';
 const FILENAME_INVALID_CHARS = /[\\/:*?"<>|]/g;
 const FILENAME_REPLACEMENT = '_';
 
@@ -13,7 +13,6 @@ const FILENAME_REPLACEMENT = '_';
 function ensureDirectory(dir) {
     if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
-        console.log(`[目录] 已创建文件夹: ${path.resolve(dir)}`);
     }
 }
 
@@ -57,7 +56,6 @@ async function saveJpg(buffer, fileName, outputDir = DEFAULT_OUTPUT_DIR) {
 
     try {
         await fs.promises.writeFile(filePath, buffer);
-        console.log(`[保存] 已保存: ${absolutePath} (${buffer.length} bytes)`);
         return absolutePath;
     } catch (err) {
         throw new Error(`保存文件失败 (${fileName}): ${err.message}`);
@@ -71,7 +69,7 @@ async function saveJpg(buffer, fileName, outputDir = DEFAULT_OUTPUT_DIR) {
  * @param {string} outputDir - 输出目录
  * @returns {Promise<Array<string>>} 保存的文件路径数组
  */
-async function saveImages(images, searchTitle, outputDir = DEFAULT_OUTPUT_DIR) {
+async function saveImages(images, searchTitle, onStepProgress = null, outputDir = DEFAULT_OUTPUT_DIR) {
     if (!Array.isArray(images)) {
         throw new Error('images必须是数组');
     }
@@ -81,13 +79,17 @@ async function saveImages(images, searchTitle, outputDir = DEFAULT_OUTPUT_DIR) {
 
     const safePrefix = searchTitle.trim().replace(FILENAME_INVALID_CHARS, FILENAME_REPLACEMENT);
     const savedPaths = [];
+    const total = images.length;
 
-    for (let i = 0; i < images.length; i++) {
+    for (let i = 0; i < total; i++) {
         const image = images[i];
         try {
             const fileName = `${safePrefix}_${generateSafeFileName(image.title, i + 1)}`;
             const filePath = await saveJpg(image.buffer, fileName, outputDir);
             savedPaths.push(filePath);
+            if (onStepProgress) {
+                onStepProgress((i + 1) / total);
+            }
         } catch (err) {
             console.error(`[跳过] ${err.message}`);
         }
@@ -97,7 +99,6 @@ async function saveImages(images, searchTitle, outputDir = DEFAULT_OUTPUT_DIR) {
         throw new Error('所有文件保存均失败');
     }
 
-    console.log(`[完成] 成功保存 ${savedPaths.length}/${images.length} 张图片到 ${path.resolve(outputDir)}`);
     return savedPaths;
 }
 
