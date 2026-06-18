@@ -17,7 +17,7 @@ class Progress {
         }
 
         if (Math.abs(this.totalWeight - 1) > 0.01) {
-            console.warn('[警告] 步骤权重总和不为1，已自动归一化');
+            // 步骤权重总和不为1，已自动归一化
             for (let key in this.stepWeights) {
                 this.stepWeights[key] /= this.totalWeight;
             }
@@ -28,7 +28,7 @@ class Progress {
         this.bar = new cliProgress.SingleBar({
             // 进度条输出格式。可以使用内置占位符自定义进度条，它们可以任意顺序组合。bar：进度条；percentage：当前进度百分比 (0-100)；
             // 此外，还可以自定义Payload，比如stepName，需要在start、update方法中传入
-            format: barFormat || '当前进度：{bar} {percentage}%，当前任务：{stepName}',
+            format: barFormat || '总进度：{bar} {percentage}%，当前任务：{stepName}',
             barCompleteChar: '█',   // 用于条形图中的"完成"指示符的字符（默认："="）
             barIncompleteChar: '░', // 用于条形图中的"未完成"指示符的字符（默认："-")
             hideCursor: true        // 在进度操作期间隐藏光标；在完成后恢复（默认：false）- 传递 null 以保持终端设置
@@ -43,8 +43,7 @@ class Progress {
      * 开始整体进度（必须在所有步骤之前调用一次）
      */
     start() {
-        if (this._started) {
-            console.warn('[警告] 进度条已经启动，忽略重复调用 start()');
+        if (this._started) {  // 进度条已经启动，忽略重复调用 start()            
             return;
         }
         this._started = true;

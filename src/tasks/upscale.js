@@ -159,7 +159,6 @@ async function upscaleImages(images, onStepProgress = null) {
                 buffer: upscaledBuffer
             });
         } catch (err) {
-            console.error(`[跳过] ${err.message}`);
             // 继续处理下一张
         }
     }
@@ -180,7 +179,6 @@ function disposeUpscaler() {
         tf.engine().startScope(); // 清理所有未释放的tensor
         tf.engine().endScope();
         upscalerInstance = null;
-        //console.log('[超分] 已释放模型资源');
     }
 }
 

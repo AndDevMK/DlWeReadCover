@@ -91,7 +91,6 @@ async function saveImages(images, searchTitle, onStepProgress = null, outputDir 
                 onStepProgress((i + 1) / total);
             }
         } catch (err) {
-            console.error(`[跳过] ${err.message}`);
         }
     }
 

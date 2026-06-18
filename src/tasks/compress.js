@@ -61,7 +61,6 @@ async function compressImages(images, onStepProgress = null) {
                 onStepProgress((i + 1) / total);
             }
         } catch (err) {
-            console.error(`[跳过] ${err.message}`);
             // 继续处理下一张
         }
     }
